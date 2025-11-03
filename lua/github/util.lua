@@ -1,5 +1,11 @@
 local M = {}
 
+local root_url = "https://api.github.com/"
+
+local function geturl(url)
+	return root_url .. url
+end
+
 function M.get(path, args)
 	local url = geturl(path)
 	local cmd = {
@@ -7,7 +13,7 @@ function M.get(path, args)
 		"-s",
 		url,
 	}
-	if #args > 0 then
+	if args and #args > 0 then
 		for _, v in args do
 			table.insert(cmd, v)
 		end
