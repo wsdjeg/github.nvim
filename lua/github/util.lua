@@ -27,7 +27,12 @@ function M.request(path, args)
 	table.insert(cmd, url)
 	local result = table.concat(vim.fn.systemlist(cmd), "\n")
 
-	return vim.json.decode(result)
+	local ok, obj = pcall(vim.json.decode, result)
+	if not ok then
+		return {}
+	else
+		return obj
+	end
 end
 
 return M
