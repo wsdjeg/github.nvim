@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/wsdjeg/github.nvim/compare/v0.1.0...v0.2.0) (2025-12-04)
+
+
+### Features
+
+* add function to update secrets ([d0cd7b1](https://github.com/wsdjeg/github.nvim/commit/d0cd7b1c7e332eb408ac0c018b4bcccd2af3b39e))
+
 ## 0.1.0 (2025-11-24)
 
 
