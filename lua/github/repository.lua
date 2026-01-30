@@ -20,7 +20,7 @@ local util = require("github.util")
 ---@param repo string repository name
 ---@param repository Repository repository information
 function M.update(user, repo, repository)
-	return util.request(table.concat({ "repos", user, repo, "rulesets" }, "/"), {
+	return util.request(table.concat({ "repos", user, repo }, "/"), {
 		"-X",
 		"PATCH",
 		"-d",
