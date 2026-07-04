@@ -14,6 +14,7 @@ github.nvim is a comprehensive GitHub REST API client written in Lua for Neovim.
 
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Sync vs Async](#sync-vs-async)
 - [API Reference](#api-reference)
     - [Issues](#issues)
     - [Pull Requests](#pull-requests)
@@ -68,9 +69,48 @@ local pulls = github.pulls
 -- ... etc
 ```
 
+## Sync vs Async
+
+Every API function comes in two flavors:
+
+| | Sync | Async |
+|---|---|---|
+| **Returns** | `table` (parsed JSON) | `integer` (job_id) |
+| **Blocking?** | Yes — uses `vim.fn.systemlist` | No — uses `job.nvim` |
+| **Naming** | `M.get(user, repo, id)` | `M.get_async(user, repo, id, callbacks, opts)` |
+
+### Async Callbacks
+
+```lua
+local callbacks = {
+    on_success = function(id, data, http_code) end,  -- 2xx response
+    on_error   = function(id, err, http_code?) end,   -- non-2xx or error
+    on_exit    = function(id, code, signal) end,      -- always called
+}
+
+local opts = { timeout = 30000 }  -- optional, milliseconds
+```
+
+### Async Example
+
+```lua
+local pulls = require('github').pulls
+
+pulls.list_async('wsdjeg', 'github.nvim', 'open', {
+    on_success = function(id, data, http_code)
+        for _, pr in ipairs(data) do
+            print(pr.number, pr.title)
+        end
+    end,
+    on_error = function(id, err)
+        vim.notify('Failed: ' .. err, vim.log.levels.ERROR)
+    end,
+})
+```
+
 ## API Reference
 
-Most API functions require `user` (owner) and `repo` (repository name) as the first two arguments.
+Most API functions require `user` (owner) and `repo` (repository name) as the first two arguments. Each sync function has an `_async` counterpart with the same parameters plus `callbacks` and `opts`.
 
 ### Issues
 
@@ -80,6 +120,11 @@ local M = require('github').issues
 M.get(user, repo, id)
 M.create_issue(user, repo, issue_data)
 M.update_issue(user, repo, id, issue_data)
+
+-- Async (add _async suffix + callbacks + opts)
+M.get_async(user, repo, id, callbacks, opts)
+M.create_issue_async(user, repo, issue_data, callbacks, opts)
+M.update_issue_async(user, repo, id, issue_data, callbacks, opts)
 ```
 
 ### Pull Requests
@@ -152,6 +197,8 @@ M.get_repository_secrets_public_key(user, repo)
 M.update_repository_secret(user, repo, secret)
 ```
 
+> **Note:** `update_repository_secret` requires [luasodium](https://luarocks.org/modules/luasodium) for encrypting secret values with the repository's public key.
+
 ### Rulesets
 
 ```lua
@@ -184,6 +231,7 @@ M.commits(query, params)
 ```lua
 local M = require('github').users
 
+-- Users
 M.get_user(username)
 M.get_authenticated_user()
 M.update_user(params)
@@ -191,10 +239,11 @@ M.list_followers(username)
 M.list_following(username)
 M.list_repos(username, params)
 
+-- Organizations
 M.get_org(org)
 M.update_org(org, params)
 M.list_members(org, params)
-M.list_repos(org, params)
+M.list_org_repos(org, params)
 ```
 
 ## Credits
