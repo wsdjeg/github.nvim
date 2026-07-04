@@ -1,102 +1,199 @@
 local M = {}
 
-local util = require("github.util")
+local util = require('github.util')
+
+--- Build query string from params table
+---@param params table?
+---@return string
+local function build_query(params)
+  if not params then
+    return ''
+  end
+  local parts = {}
+  for k, v in pairs(params) do
+    parts[#parts + 1] = k .. '=' .. vim.uri_encode(tostring(v))
+  end
+  if #parts == 0 then
+    return ''
+  end
+  return '?' .. table.concat(parts, '&')
+end
+
+--- Construct actions API path
+---@param user string
+---@param repo string
+---@param ... string|number
+---@return string
+local function build_path(user, repo, ...)
+  local segments = { 'repos', user, repo, 'actions' }
+  for _, seg in ipairs({ ... }) do
+    segments[#segments + 1] = tostring(seg)
+  end
+  return table.concat(segments, '/')
+end
+
+
+-- ============================================================
+-- Sync API (backward compatible)
+-- ============================================================
 
 --- List workflows in a repository
 ---@param user string
 ---@param repo string
+---@return table
 function M.list_workflows(user, repo)
-    return util.request(table.concat({ "repos", user, repo, "actions/workflows" }, "/"))
+  return util.request(build_path(user, repo, 'workflows'))
 end
 
 --- Get a specific workflow
 ---@param user string
 ---@param repo string
----@param workflow_id string|number workflow ID or file name (e.g., "main.yml")
+---@param workflow_id string|number workflow ID or file name (e.g. "main.yml")
+---@return table
 function M.get_workflow(user, repo, workflow_id)
-    return util.request(table.concat({ "repos", user, repo, "actions/workflows", workflow_id }, "/"))
+  return util.request(build_path(user, repo, 'workflows', workflow_id))
 end
 
 --- List workflow runs
 ---@param user string
 ---@param repo string
 ---@param params table? {actor?, branch?, event?, status?}
+---@return table
 function M.list_workflow_runs(user, repo, params)
-    local url = table.concat({ "repos", user, repo, "actions/runs" }, "/")
-    if params then
-        local query_parts = {}
-        for k, v in pairs(params) do
-            table.insert(query_parts, k .. "=" .. v)
-        end
-        if #query_parts > 0 then
-            url = url .. "?" .. table.concat(query_parts, "&")
-        end
-    end
-    return util.request(url)
+  return util.request(build_path(user, repo, 'runs') .. build_query(params))
 end
 
 --- Get a specific workflow run
 ---@param user string
 ---@param repo string
 ---@param run_id number
+---@return table
 function M.get_workflow_run(user, repo, run_id)
-    return util.request(table.concat({ "repos", user, repo, "actions/runs", run_id }, "/"))
+  return util.request(build_path(user, repo, 'runs', run_id))
 end
 
 --- Re-run a workflow run
 ---@param user string
 ---@param repo string
 ---@param run_id number
+---@return table
 function M.re_run_workflow(user, repo, run_id)
-    return util.request(table.concat({ "repos", user, repo, "actions/runs", run_id, "rerun" }, "/"), {
-        "-X",
-        "POST",
-    })
+  return util.request(build_path(user, repo, 'runs', run_id, 'rerun'), {
+    '-X', 'POST',
+  })
 end
 
 --- Cancel a workflow run
 ---@param user string
 ---@param repo string
 ---@param run_id number
+---@return table
 function M.cancel_workflow_run(user, repo, run_id)
-    return util.request(table.concat({ "repos", user, repo, "actions/runs", run_id, "cancel" }, "/"), {
-        "-X",
-        "POST",
-    })
+  return util.request(build_path(user, repo, 'runs', run_id, 'cancel'), {
+    '-X', 'POST',
+  })
 end
 
 --- List jobs for a workflow run
 ---@param user string
 ---@param repo string
 ---@param run_id number
+---@return table
 function M.list_jobs_for_run(user, repo, run_id)
-    return util.request(table.concat({ "repos", user, repo, "actions/runs", run_id, "jobs" }, "/"))
+  return util.request(build_path(user, repo, 'runs', run_id, 'jobs'))
 end
 
 --- List artifacts for a repository
 ---@param user string
 ---@param repo string
+---@return table
 function M.list_artifacts(user, repo)
-    return util.request(table.concat({ "repos", user, repo, "actions/artifacts" }, "/"))
+  return util.request(build_path(user, repo, 'artifacts'))
 end
 
---- Download an artifact (returns URL/info, actual download is complex via curl)
+--- Get an artifact
 ---@param user string
 ---@param repo string
 ---@param artifact_id number
+---@return table
 function M.get_artifact(user, repo, artifact_id)
-    return util.request(table.concat({ "repos", user, repo, "actions/artifacts", artifact_id }, "/"))
+  return util.request(build_path(user, repo, 'artifacts', artifact_id))
 end
 
 --- Delete an artifact
 ---@param user string
 ---@param repo string
 ---@param artifact_id number
+---@return table
 function M.delete_artifact(user, repo, artifact_id)
-    return util.request(table.concat({ "repos", user, repo, "actions/artifacts", artifact_id }, "/"), {
-        "-X",
-        "DELETE",
-    })
+  return util.request(build_path(user, repo, 'artifacts', artifact_id), {
+    '-X', 'DELETE',
+  })
+end
+
+
+-- ============================================================
+-- Async API
+-- ============================================================
+
+--- Async list workflows
+---@return integer job_id
+function M.list_workflows_async(user, repo, callbacks, opts)
+  return util.get_async(build_path(user, repo, 'workflows'), callbacks, opts)
+end
+
+--- Async get a specific workflow
+---@return integer job_id
+function M.get_workflow_async(user, repo, workflow_id, callbacks, opts)
+  return util.get_async(build_path(user, repo, 'workflows', workflow_id), callbacks, opts)
+end
+
+--- Async list workflow runs
+---@return integer job_id
+function M.list_workflow_runs_async(user, repo, params, callbacks, opts)
+  return util.get_async(build_path(user, repo, 'runs') .. build_query(params), callbacks, opts)
+end
+
+--- Async get a specific workflow run
+---@return integer job_id
+function M.get_workflow_run_async(user, repo, run_id, callbacks, opts)
+  return util.get_async(build_path(user, repo, 'runs', run_id), callbacks, opts)
+end
+
+--- Async re-run a workflow run
+---@return integer job_id
+function M.re_run_workflow_async(user, repo, run_id, callbacks, opts)
+  return util.post_async(build_path(user, repo, 'runs', run_id, 'rerun'), '{}', callbacks, opts)
+end
+
+--- Async cancel a workflow run
+---@return integer job_id
+function M.cancel_workflow_run_async(user, repo, run_id, callbacks, opts)
+  return util.post_async(build_path(user, repo, 'runs', run_id, 'cancel'), '{}', callbacks, opts)
+end
+
+--- Async list jobs for a workflow run
+---@return integer job_id
+function M.list_jobs_for_run_async(user, repo, run_id, callbacks, opts)
+  return util.get_async(build_path(user, repo, 'runs', run_id, 'jobs'), callbacks, opts)
+end
+
+--- Async list artifacts for a repository
+---@return integer job_id
+function M.list_artifacts_async(user, repo, callbacks, opts)
+  return util.get_async(build_path(user, repo, 'artifacts'), callbacks, opts)
+end
+
+--- Async get an artifact
+---@return integer job_id
+function M.get_artifact_async(user, repo, artifact_id, callbacks, opts)
+  return util.get_async(build_path(user, repo, 'artifacts', artifact_id), callbacks, opts)
+end
+
+--- Async delete an artifact
+---@return integer job_id
+function M.delete_artifact_async(user, repo, artifact_id, callbacks, opts)
+  return util.delete_async(build_path(user, repo, 'artifacts', artifact_id), callbacks, opts)
 end
 
 return M

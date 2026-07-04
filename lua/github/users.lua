@@ -1,108 +1,180 @@
+--[[
+  Users 模块 (Users & Organizations)
+
+  同步 API: M.get_user / M.get_authenticated_user / M.update_user
+            M.list_followers / M.list_following / M.list_repos
+            M.get_org / M.update_org / M.list_members / M.list_org_repos
+  异步 API: 以上方法名加 _async 后缀
+--]]
 local M = {}
 
-local util = require("github.util")
+local util = require('github.util')
 
---- Get user profile
----@param username string GitHub username
+--- 构造查询字符串
+---@param params table?
+---@return string
+local function build_query(params)
+  if not params then
+    return ''
+  end
+  local parts = {}
+  for k, v in pairs(params) do
+    parts[#parts + 1] = k .. '=' .. vim.uri_encode(tostring(v))
+  end
+  if #parts == 0 then
+    return ''
+  end
+  return '?' .. table.concat(parts, '&')
+end
+
+-- ============================================================
+-- 同步 API (向后兼容)
+-- ============================================================
+
+--- 获取用户资料
+---@param username string
+---@return table
 function M.get_user(username)
-    return util.request(table.concat({ "users", username }, "/"))
+  return util.request(table.concat({ 'users', username }, '/'))
 end
 
---- Get authenticated user profile
+--- 获取已认证用户资料
+---@return table
 function M.get_authenticated_user()
-    return util.request("user")
+  return util.request('user')
 end
 
---- Update authenticated user profile
+--- 更新已认证用户资料
 ---@param params table {name?, email?, blog?, company?, location?, hireable?, bio?, twitter_username?}
+---@return table
 function M.update_user(params)
-    return util.request("user", {
-        "-X",
-        "PATCH",
-        "-d",
-        vim.json.encode(params),
-    })
+  return util.request('user', {
+    '-X', 'PATCH',
+    '-d', vim.json.encode(params),
+  })
 end
 
---- List followers of a user
+--- 列出用户粉丝
 ---@param username string
+---@return table
 function M.list_followers(username)
-    return util.request(table.concat({ "users", username, "followers" }, "/"))
+  return util.request(table.concat({ 'users', username, 'followers' }, '/'))
 end
 
---- List users a user is following
+--- 列出用户关注的人
 ---@param username string
+---@return table
 function M.list_following(username)
-    return util.request(table.concat({ "users", username, "following" }, "/"))
+  return util.request(table.concat({ 'users', username, 'following' }, '/'))
 end
 
---- List user's repositories
+--- 列出用户仓库
 ---@param username string
----@param params table? {type?: "all"|"owner"|"member", sort?: "created"|"updated"|"pushed"|"full_name", direction?: "asc"|"desc", per_page?: number, page?: number}
+---@param params table? {type?, sort?, direction?, per_page?, page?}
+---@return table
 function M.list_repos(username, params)
-    local url = table.concat({ "users", username, "repos" }, "/")
-    if params then
-        local query_parts = {}
-        for k, v in pairs(params) do
-            table.insert(query_parts, k .. "=" .. v)
-        end
-        if #query_parts > 0 then
-            url = url .. "?" .. table.concat(query_parts, "&")
-        end
-    end
-    return util.request(url)
+  local url = table.concat({ 'users', username, 'repos' }, '/') .. build_query(params)
+  return util.request(url)
 end
 
---- Get organization profile
----@param org string Organization name
+--- 获取组织资料
+---@param org string
+---@return table
 function M.get_org(org)
-    return util.request(table.concat({ "orgs", org }, "/"))
+  return util.request(table.concat({ 'orgs', org }, '/'))
 end
 
---- Update organization profile
+--- 更新组织资料
 ---@param org string
----@param params table {billing_email?, company?, email?, location?, name?, description?, has_organization_projects?, has_repository_projects?, default_repository_permission?, members_can_create_repositories?, members_can_create_public_repositories?, members_can_create_private_repositories?, members_can_create_internal_repositories?, members_allowed_repository_creation_type?, members_can_create_pages?, members_can_create_public_pages?, members_can_create_private_pages?, members_can_fork_private_repositories?, web_commit_signoff_required?, blog?, twitter_username?, location?,}
+---@param params table
+---@return table
 function M.update_org(org, params)
-    return util.request(table.concat({ "orgs", org }, "/"), {
-        "-X",
-        "PATCH",
-        "-d",
-        vim.json.encode(params),
-    })
+  return util.request(table.concat({ 'orgs', org }, '/'), {
+    '-X', 'PATCH',
+    '-d', vim.json.encode(params),
+  })
 end
 
---- List organization members
+--- 列出组织成员
 ---@param org string
----@param params table? {filter?: "2fa_disabled"|"all", role?: "all"|"admin"|"member", per_page?: number, page?: number}
+---@param params table? {filter?, role?, per_page?, page?}
+---@return table
 function M.list_members(org, params)
-    local url = table.concat({ "orgs", org, "members" }, "/")
-    if params then
-        local query_parts = {}
-        for k, v in pairs(params) do
-            table.insert(query_parts, k .. "=" .. v)
-        end
-        if #query_parts > 0 then
-            url = url .. "?" .. table.concat(query_parts, "&")
-        end
-    end
-    return util.request(url)
+  local url = table.concat({ 'orgs', org, 'members' }, '/') .. build_query(params)
+  return util.request(url)
 end
 
---- List organization repositories
+--- 列出组织仓库
 ---@param org string
----@param params table? {type?: "all"|"public"|"private"|"forks"|"sources"|"member", sort?: "created"|"updated"|"pushed"|"full_name", direction?: "asc"|"desc", per_page?: number, page?: number}
-function M.list_repos(org, params)
-    local url = table.concat({ "orgs", org, "repos" }, "/")
-    if params then
-        local query_parts = {}
-        for k, v in pairs(params) do
-            table.insert(query_parts, k .. "=" .. v)
-        end
-        if #query_parts > 0 then
-            url = url .. "?" .. table.concat(query_parts, "&")
-        end
-    end
-    return util.request(url)
+---@param params table? {type?, sort?, direction?, per_page?, page?}
+---@return table
+function M.list_org_repos(org, params)
+  local url = table.concat({ 'orgs', org, 'repos' }, '/') .. build_query(params)
+  return util.request(url)
+end
+
+-- ============================================================
+-- 异步 API
+-- ============================================================
+
+--- 异步获取用户资料
+---@return integer job_id
+function M.get_user_async(username, callbacks, opts)
+  return util.get_async(table.concat({ 'users', username }, '/'), callbacks, opts)
+end
+
+--- 异步获取已认证用户资料
+---@return integer job_id
+function M.get_authenticated_user_async(callbacks, opts)
+  return util.get_async('user', callbacks, opts)
+end
+
+--- 异步更新已认证用户资料
+---@return integer job_id
+function M.update_user_async(params, callbacks, opts)
+  return util.patch_async('user', vim.json.encode(params), callbacks, opts)
+end
+
+--- 异步列出用户粉丝
+---@return integer job_id
+function M.list_followers_async(username, callbacks, opts)
+  return util.get_async(table.concat({ 'users', username, 'followers' }, '/'), callbacks, opts)
+end
+
+--- 异步列出用户关注的人
+---@return integer job_id
+function M.list_following_async(username, callbacks, opts)
+  return util.get_async(table.concat({ 'users', username, 'following' }, '/'), callbacks, opts)
+end
+
+--- 异步列出用户仓库
+---@return integer job_id
+function M.list_repos_async(username, params, callbacks, opts)
+  return util.get_async(table.concat({ 'users', username, 'repos' }, '/') .. build_query(params), callbacks, opts)
+end
+
+--- 异步获取组织资料
+---@return integer job_id
+function M.get_org_async(org, callbacks, opts)
+  return util.get_async(table.concat({ 'orgs', org }, '/'), callbacks, opts)
+end
+
+--- 异步更新组织资料
+---@return integer job_id
+function M.update_org_async(org, params, callbacks, opts)
+  return util.patch_async(table.concat({ 'orgs', org }, '/'), vim.json.encode(params), callbacks, opts)
+end
+
+--- 异步列出组织成员
+---@return integer job_id
+function M.list_members_async(org, params, callbacks, opts)
+  return util.get_async(table.concat({ 'orgs', org, 'members' }, '/') .. build_query(params), callbacks, opts)
+end
+
+--- 异步列出组织仓库
+---@return integer job_id
+function M.list_org_repos_async(org, params, callbacks, opts)
+  return util.get_async(table.concat({ 'orgs', org, 'repos' }, '/') .. build_query(params), callbacks, opts)
 end
 
 return M

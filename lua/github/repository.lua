@@ -1,5 +1,12 @@
+--[[
+  Repository 模块
+
+  同步 API: M.update
+  异步 API: M.update_async
+--]]
 local M = {}
-local util = require("github.util")
+
+local util = require('github.util')
 
 ---@class Repository
 ---@field name string The name of the repository.
@@ -27,15 +34,44 @@ local util = require("github.util")
 ---@field allow_forking boolean
 ---@field web_commit_signoff_required boolean
 
----@param user string the username
----@param repo string repository name
----@param repository Repository repository information
-function M.update(user, repo, repository)
-	return util.request(table.concat({ "repos", user, repo }, "/"), {
-		"-X",
-		"PATCH",
-		"-d",
-		vim.json.encode(repository),
-	})
+--- 构造 repo API 路径
+---@param user string
+---@param repo string
+---@return string
+local function build_path(user, repo)
+  return table.concat({ 'repos', user, repo }, '/')
 end
+
+-- ============================================================
+-- 同步 API (向后兼容)
+-- ============================================================
+
+--- 更新仓库信息
+---@param user string
+---@param repo string
+---@param repository Repository
+---@return table
+function M.update(user, repo, repository)
+  return util.request(build_path(user, repo), {
+    '-X', 'PATCH',
+    '-d', vim.json.encode(repository),
+  })
+end
+
+-- ============================================================
+-- 异步 API
+-- ============================================================
+
+--- 异步更新仓库信息
+---@param user string
+---@param repo string
+---@param repository Repository
+---@param callbacks table {on_success, on_error, on_exit}
+---@param opts table? {timeout?}
+---@return integer job_id
+function M.update_async(user, repo, repository, callbacks, opts)
+  return util.patch_async(build_path(user, repo), vim.json.encode(repository), callbacks, opts)
+end
+
 return M
+
