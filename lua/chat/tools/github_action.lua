@@ -76,15 +76,90 @@ local function format_artifact(art)
   return table.concat(lines, '\n')
 end
 
+--- Format API response data into readable text lines
+---@param op string operation name
+---@param data table parsed JSON response
+---@param user string repo owner
+---@param repo string repo name
+---@param action table original action parameters
+---@return string[]
+local function format_result(op, data, user, repo, action)
+  local lines = {}
+
+  if op == 'list_workflows' then
+    local wfs = data.workflows or {}
+    table.insert(lines, string.format('Workflows for %s/%s (%d):', user, repo, #wfs))
+    table.insert(lines, '')
+    for i, wf in ipairs(wfs) do
+      table.insert(lines, string.format('%d. %s', i, wf.name or 'N/A'))
+      table.insert(lines, format_workflow(wf))
+      table.insert(lines, '')
+    end
+
+  elseif op == 'get_workflow' then
+    table.insert(lines, string.format('Workflow: %s', data.name or 'N/A'))
+    table.insert(lines, format_workflow(data))
+
+  elseif op == 'list_workflow_runs' then
+    local runs = data.workflow_runs or {}
+    table.insert(lines, string.format('Workflow runs for %s/%s (%d):', user, repo, #runs))
+    table.insert(lines, '')
+    for i, run in ipairs(runs) do
+      table.insert(lines, string.format('%d. %s', i, run.name or 'N/A'))
+      table.insert(lines, format_run(run))
+      table.insert(lines, '')
+    end
+
+  elseif op == 'get_workflow_run' then
+    table.insert(lines, string.format('Workflow Run: %s', data.name or 'N/A'))
+    table.insert(lines, format_run(data))
+
+  elseif op == 'list_jobs_for_run' then
+    local jobs = data.jobs or {}
+    table.insert(lines, string.format('Jobs for run %d (%d):', action.run_id, #jobs))
+    table.insert(lines, '')
+    for i, job in ipairs(jobs) do
+      table.insert(lines, string.format('%d. %s', i, job.name or 'N/A'))
+      table.insert(lines, format_job(job))
+      table.insert(lines, '')
+    end
+
+  elseif op == 'list_artifacts' then
+    local arts = data.artifacts or {}
+    table.insert(lines, string.format('Artifacts for %s/%s (%d):', user, repo, #arts))
+    table.insert(lines, '')
+    for i, art in ipairs(arts) do
+      table.insert(lines, string.format('%d. %s', i, art.name or 'N/A'))
+      table.insert(lines, format_artifact(art))
+      table.insert(lines, '')
+    end
+
+  elseif op == 'get_artifact' then
+    table.insert(lines, string.format('Artifact: %s', data.name or 'N/A'))
+    table.insert(lines, format_artifact(data))
+
+  elseif op == 're_run_workflow' then
+    table.insert(lines, string.format('Workflow run %d re-run requested.', action.run_id))
+
+  elseif op == 'cancel_workflow_run' then
+    table.insert(lines, string.format('Workflow run %d cancel requested.', action.run_id))
+
+  elseif op == 'delete_artifact' then
+    table.insert(lines, string.format('Artifact %d deleted.', action.artifact_id))
+  end
+
+  return lines
+end
+
 -- ============================================================
--- Operation dispatch
+-- Async tool entry point
 -- ============================================================
 
 ---@param action table
----@param _ table?
+---@param ctx table { callback = fun(result: table), cwd = string }
 ---@return table
-function M.github_action(action, _)
-  -- Parameter validation
+function M.github_action(action, ctx)
+  -- Parameter validation (synchronous, immediate error)
   if not action.user or type(action.user) ~= 'string' or action.user == '' then
     return { error = 'user is required and must be a non-empty string.' }
   end
@@ -99,122 +174,32 @@ function M.github_action(action, _)
   local op = action.operation
   local user, repo = action.user, action.repo
 
-  ---@type table
-  local result
-  local lines = {}
+  -- Operation-specific parameter validation
+  if op == 'get_workflow' and not action.workflow_id then
+    return { error = 'workflow_id is required for get_workflow operation.' }
+  elseif
+    (op == 'get_workflow_run' or op == 'list_jobs_for_run' or op == 're_run_workflow' or op == 'cancel_workflow_run')
+    and not action.run_id
+  then
+    return { error = 'run_id is required for ' .. op .. ' operation.' }
+  elseif (op == 'get_artifact' or op == 'delete_artifact') and not action.artifact_id then
+    return { error = 'artifact_id is required for ' .. op .. ' operation.' }
+  end
 
-  -- Read operations
-  if op == 'list_workflows' then
-    result = ops.list_workflows(user, repo)
-    local wfs = result.workflows or {}
-    table.insert(lines, string.format('Workflows for %s/%s (%d):', user, repo, #wfs))
-    table.insert(lines, '')
-    for i, wf in ipairs(wfs) do
-      table.insert(lines, string.format('%d. %s', i, wf.name or 'N/A'))
-      table.insert(lines, format_workflow(wf))
-      table.insert(lines, '')
-    end
-
-  elseif op == 'get_workflow' then
-    if not action.workflow_id then
-      return { error = 'workflow_id is required for get_workflow operation.' }
-    end
-    result = ops.get_workflow(user, repo, action.workflow_id)
-    if result.message then
-      return { error = 'GitHub API error: ' .. result.message }
-    end
-    table.insert(lines, string.format('Workflow: %s', result.name or 'N/A'))
-    table.insert(lines, format_workflow(result))
-
-  elseif op == 'list_workflow_runs' then
-    local params = nil
-    if action.actor or action.branch or action.event or action.status then
-      params = {}
-      if action.actor then params.actor = action.actor end
-      if action.branch then params.branch = action.branch end
-      if action.event then params.event = action.event end
-      if action.status then params.status = action.status end
-    end
-    result = ops.list_workflow_runs(user, repo, params)
-    local runs = result.workflow_runs or {}
-    table.insert(lines, string.format('Workflow runs for %s/%s (%d):', user, repo, #runs))
-    table.insert(lines, '')
-    for i, run in ipairs(runs) do
-      table.insert(lines, string.format('%d. %s', i, run.name or 'N/A'))
-      table.insert(lines, format_run(run))
-      table.insert(lines, '')
-    end
-
-  elseif op == 'get_workflow_run' then
-    if not action.run_id then
-      return { error = 'run_id is required for get_workflow_run operation.' }
-    end
-    result = ops.get_workflow_run(user, repo, action.run_id)
-    if result.message then
-      return { error = 'GitHub API error: ' .. result.message }
-    end
-    table.insert(lines, string.format('Workflow Run: %s', result.name or 'N/A'))
-    table.insert(lines, format_run(result))
-
-  elseif op == 'list_jobs_for_run' then
-    if not action.run_id then
-      return { error = 'run_id is required for list_jobs_for_run operation.' }
-    end
-    result = ops.list_jobs_for_run(user, repo, action.run_id)
-    local jobs = result.jobs or {}
-    table.insert(lines, string.format('Jobs for run %d (%d):', action.run_id, #jobs))
-    table.insert(lines, '')
-    for i, job in ipairs(jobs) do
-      table.insert(lines, string.format('%d. %s', i, job.name or 'N/A'))
-      table.insert(lines, format_job(job))
-      table.insert(lines, '')
-    end
-
-  elseif op == 'list_artifacts' then
-    result = ops.list_artifacts(user, repo)
-    local arts = result.artifacts or {}
-    table.insert(lines, string.format('Artifacts for %s/%s (%d):', user, repo, #arts))
-    table.insert(lines, '')
-    for i, art in ipairs(arts) do
-      table.insert(lines, string.format('%d. %s', i, art.name or 'N/A'))
-      table.insert(lines, format_artifact(art))
-      table.insert(lines, '')
-    end
-
-  elseif op == 'get_artifact' then
-    if not action.artifact_id then
-      return { error = 'artifact_id is required for get_artifact operation.' }
-    end
-    result = ops.get_artifact(user, repo, action.artifact_id)
-    if result.message then
-      return { error = 'GitHub API error: ' .. result.message }
-    end
-    table.insert(lines, string.format('Artifact: %s', result.name or 'N/A'))
-    table.insert(lines, format_artifact(result))
-
-  -- Write operations
-  elseif op == 're_run_workflow' then
-    if not action.run_id then
-      return { error = 'run_id is required for re_run_workflow operation.' }
-    end
-    ops.re_run_workflow(user, repo, action.run_id)
-    table.insert(lines, string.format('Workflow run %d re-run requested.', action.run_id))
-
-  elseif op == 'cancel_workflow_run' then
-    if not action.run_id then
-      return { error = 'run_id is required for cancel_workflow_run operation.' }
-    end
-    ops.cancel_workflow_run(user, repo, action.run_id)
-    table.insert(lines, string.format('Workflow run %d cancel requested.', action.run_id))
-
-  elseif op == 'delete_artifact' then
-    if not action.artifact_id then
-      return { error = 'artifact_id is required for delete_artifact operation.' }
-    end
-    ops.delete_artifact(user, repo, action.artifact_id)
-    table.insert(lines, string.format('Artifact %d deleted.', action.artifact_id))
-
-  else
+  -- Valid operations
+  local valid_ops = {
+    list_workflows = true,
+    get_workflow = true,
+    list_workflow_runs = true,
+    get_workflow_run = true,
+    list_jobs_for_run = true,
+    list_artifacts = true,
+    get_artifact = true,
+    re_run_workflow = true,
+    cancel_workflow_run = true,
+    delete_artifact = true,
+  }
+  if not valid_ops[op] then
     return {
       error = string.format(
         'Unknown operation: "%s". Valid operations: list_workflows, get_workflow, '
@@ -225,8 +210,70 @@ function M.github_action(action, _)
     }
   end
 
-  local content = table.concat(lines, '\n')
-  return { content = content }
+  -- Build async callbacks
+  local callbacks = {
+    on_success = function(id, data, http_code)
+      local lines = format_result(op, data, user, repo, action)
+      ctx.callback({
+        content = table.concat(lines, '\n'),
+        jobid = id,
+      })
+    end,
+    on_error = function(id, err, http_code)
+      local msg = err
+      if http_code then
+        msg = string.format('%s (HTTP %d)', err, http_code)
+      end
+      ctx.callback({
+        error = string.format('GitHub API error: %s', msg),
+        jobid = id,
+      })
+    end,
+  }
+
+  -- Dispatch to async API
+  local jobid
+
+  if op == 'list_workflows' then
+    jobid = ops.list_workflows_async(user, repo, callbacks)
+
+  elseif op == 'get_workflow' then
+    jobid = ops.get_workflow_async(user, repo, action.workflow_id, callbacks)
+
+  elseif op == 'list_workflow_runs' then
+    local params = nil
+    if action.actor or action.branch or action.event or action.status then
+      params = {}
+      if action.actor then params.actor = action.actor end
+      if action.branch then params.branch = action.branch end
+      if action.event then params.event = action.event end
+      if action.status then params.status = action.status end
+    end
+    jobid = ops.list_workflow_runs_async(user, repo, params, callbacks)
+
+  elseif op == 'get_workflow_run' then
+    jobid = ops.get_workflow_run_async(user, repo, action.run_id, callbacks)
+
+  elseif op == 'list_jobs_for_run' then
+    jobid = ops.list_jobs_for_run_async(user, repo, action.run_id, callbacks)
+
+  elseif op == 'list_artifacts' then
+    jobid = ops.list_artifacts_async(user, repo, callbacks)
+
+  elseif op == 'get_artifact' then
+    jobid = ops.get_artifact_async(user, repo, action.artifact_id, callbacks)
+
+  elseif op == 're_run_workflow' then
+    jobid = ops.re_run_workflow_async(user, repo, action.run_id, callbacks)
+
+  elseif op == 'cancel_workflow_run' then
+    jobid = ops.cancel_workflow_run_async(user, repo, action.run_id, callbacks)
+
+  elseif op == 'delete_artifact' then
+    jobid = ops.delete_artifact_async(user, repo, action.artifact_id, callbacks)
+  end
+
+  return { jobid = jobid }
 end
 
 function M.scheme()
