@@ -13,6 +13,9 @@ local M = {}
 
 local root_url = 'https://api.github.com/'
 
+-- 私有 token，仅可通过 set_token 写入，不提供读取接口
+local token
+
 -- 正在运行的异步请求
 M._pending = {}
 
@@ -20,6 +23,12 @@ M._pending = {}
 ---@param url string
 function M.set_base_url(url)
   root_url = url
+end
+
+--- 设置 GitHub token（仅写入，不提供读取）
+---@param t string
+function M.set_token(t)
+  token = t
 end
 
 --- 构造完整 URL
@@ -40,7 +49,7 @@ local function build_curl_cmd(path, args)
     '-s',
     '-L',
     '-H', 'Accept: application/vnd.github+json',
-    '-H', 'Authorization: token ' .. (vim.env.GITHUB_TOKEN or ''),
+    '-H', 'Authorization: token ' .. (token or ''),
     '-H', 'X-GitHub-Api-Version: 2022-11-28',
   }
   if args and #args > 0 then

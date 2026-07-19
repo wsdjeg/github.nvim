@@ -19,10 +19,29 @@ function TestInit:testSetupCustomBaseUrl()
 end
 
 function TestInit:testSetupToken()
-  local orig_token = vim.env.GITHUB_TOKEN
+  -- Token is write-only: setup passes it to util.set_token internally
+  -- Verify it works by checking that requests include the token
+  local util = require('github.util')
+  local orig = vim.fn.systemlist
+  local captured = nil
+  vim.fn.systemlist = function(cmd)
+    captured = cmd
+    return { '{}' }
+  end
+
   github.setup({ token = 'custom-token-123' })
-  lu.assertEquals(vim.env.GITHUB_TOKEN, 'custom-token-123')
-  vim.env.GITHUB_TOKEN = orig_token
+  util.request('repos/test/repo')
+
+  vim.fn.systemlist = orig
+
+  local cmd_str = table.concat(captured, ' ')
+  lu.assertStrContains(cmd_str, 'Authorization: token custom-token-123')
+
+  -- Token should NOT be in public config
+  lu.assertIsNil(github.config.token)
+
+  -- Cleanup
+  util.set_token(nil)
   github.setup()
 end
 

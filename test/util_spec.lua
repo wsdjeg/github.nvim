@@ -77,8 +77,7 @@ function TestUtil:testRequestIncludesHeaders()
 end
 
 function TestUtil:testRequestIncludesToken()
-  local orig_token = vim.env.GITHUB_TOKEN
-  vim.env.GITHUB_TOKEN = 'my-test-token'
+  util.set_token('my-test-token')
 
   local orig = vim.fn.systemlist
   local captured = nil
@@ -90,7 +89,7 @@ function TestUtil:testRequestIncludesToken()
   util.request('repos/test/repo')
 
   vim.fn.systemlist = orig
-  vim.env.GITHUB_TOKEN = orig_token
+  util.set_token(nil)
 
   local cmd_str = table.concat(captured, ' ')
   lu.assertStrContains(cmd_str, 'Authorization: token my-test-token')
