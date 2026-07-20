@@ -86,6 +86,15 @@ function TestActions:testListJobsForRun()
   lu.assertEquals(captured.sync[1].path, 'repos/wsdjeg/github.nvim/actions/runs/456/jobs')
 end
 
+function TestActions:testDownloadJobLogs()
+  local captured, restore = helpers.mock_util()
+  actions.download_job_logs('wsdjeg', 'github.nvim', 789, '/tmp/logs.zip')
+  restore()
+
+  lu.assertEquals(captured.sync[1].path, 'repos/wsdjeg/github.nvim/actions/jobs/789/logs')
+  lu.assertEquals(captured.sync[1].output, '/tmp/logs.zip')
+end
+
 function TestActions:testListArtifacts()
   local captured, restore = helpers.mock_util()
   actions.list_artifacts('wsdjeg', 'github.nvim')
@@ -158,6 +167,16 @@ function TestActions:testDeleteArtifactAsync()
 
   lu.assertEquals(captured.async[1].method, 'DELETE')
   lu.assertEquals(captured.async[1].path, 'repos/wsdjeg/github.nvim/actions/artifacts/789')
+end
+
+function TestActions:testDownloadJobLogsAsync()
+  local captured, restore = helpers.mock_util()
+  actions.download_job_logs_async('wsdjeg', 'github.nvim', 789, '/tmp/logs.zip', {}, {})
+  restore()
+
+  lu.assertEquals(captured.async[1].method, 'DOWNLOAD')
+  lu.assertEquals(captured.async[1].path, 'repos/wsdjeg/github.nvim/actions/jobs/789/logs')
+  lu.assertEquals(captured.async[1].output, '/tmp/logs.zip')
 end
 
 return TestActions

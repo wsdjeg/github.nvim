@@ -103,6 +103,17 @@ function M.list_jobs_for_run(user, repo, run_id)
   return util.request(build_path(user, repo, 'runs', run_id, 'jobs'))
 end
 
+--- Download logs for a specific job (zip file)
+---@param user string
+---@param repo string
+---@param job_id number
+---@param output string output file path
+---@return boolean success
+---@return integer? http_code
+function M.download_job_logs(user, repo, job_id, output)
+  return util.download(build_path(user, repo, 'jobs', job_id, 'logs'), output)
+end
+
 --- List artifacts for a repository
 ---@param user string
 ---@param repo string
@@ -176,6 +187,18 @@ end
 ---@return integer job_id
 function M.list_jobs_for_run_async(user, repo, run_id, callbacks, opts)
   return util.get_async(build_path(user, repo, 'runs', run_id, 'jobs'), callbacks, opts)
+end
+
+--- Async download logs for a specific job (zip file)
+---@param user string
+---@param repo string
+---@param job_id number
+---@param output string output file path
+---@param callbacks table? {on_success, on_error, on_exit}
+---@param opts table? {timeout}
+---@return integer job_id
+function M.download_job_logs_async(user, repo, job_id, output, callbacks, opts)
+  return util.download_async(build_path(user, repo, 'jobs', job_id, 'logs'), output, callbacks, opts)
 end
 
 --- Async list artifacts for a repository

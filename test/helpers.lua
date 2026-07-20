@@ -5,8 +5,8 @@ local M = {}
 
 --- Set up mocks for github.util sync/async request methods
 --- @return table captured, function restore
----   captured.sync: array of {path, args} for each util.request call
----   captured.async: array of {method, path, body?} for each async call
+---   captured.sync: array of {path, args, output?} for each util.request/download call
+---   captured.async: array of {method, path, body?, output?} for each async call
 ---   restore(): restores original methods
 function M.mock_util()
   local util = require('github.util')
@@ -20,12 +20,20 @@ function M.mock_util()
     patch_async = util.patch_async,
     put_async = util.put_async,
     delete_async = util.delete_async,
+    download = util.download,
+    download_async = util.download_async,
   }
 
   -- Mock sync request
   util.request = function(path, args)
     table.insert(captured.sync, { path = path, args = args })
     return { _mock = true, path = path }
+  end
+
+  -- Mock sync download
+  util.download = function(path, output)
+    table.insert(captured.sync, { path = path, output = output })
+    return true, 200
   end
 
   -- Mock async methods
@@ -59,6 +67,11 @@ function M.mock_util()
     return 1
   end
 
+  util.download_async = function(path, output, callbacks, opts)
+    table.insert(captured.async, { method = 'DOWNLOAD', path = path, output = output })
+    return 1
+  end
+
   local function restore()
     util.request = orig.request
     util.request_async = orig.request_async
@@ -67,6 +80,8 @@ function M.mock_util()
     util.patch_async = orig.patch_async
     util.put_async = orig.put_async
     util.delete_async = orig.delete_async
+    util.download = orig.download
+    util.download_async = orig.download_async
   end
 
   return captured, restore

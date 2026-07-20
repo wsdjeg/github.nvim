@@ -270,5 +270,122 @@ function M.pending_count()
   return n
 end
 
+-- ============================================================
+-- 文件下载 (非 JSON 响应，如 zip 日志)
+-- ============================================================
+
+--- 同步下载文件到指定路径
+---@param path string API 路径
+---@param output string 输出文件路径
+---@return boolean success 是否成功
+---@return integer? http_code HTTP 状态码
+function M.download(path, output)
+  local url = build_url(path)
+  local cmd = {
+    'curl',
+    '-sL',
+    '-H', 'Accept: application/vnd.github+json',
+    '-H', 'Authorization: token ' .. (token or ''),
+    '-H', 'X-GitHub-Api-Version: 2022-11-28',
+    '-o', output,
+    '-w', '%{http_code}',
+    url,
+  }
+  local result = vim.trim(vim.fn.system(cmd))
+  local http_code = tonumber(result)
+  local success = http_code and http_code >= 200 and http_code < 300
+  return success or false, http_code
+end
+
+--- 异步下载文件到指定路径
+---@param path string API 路径
+---@param output string 输出文件路径
+---@param callbacks table? {on_success, on_error, on_exit}
+---@param opts table? {timeout}
+---@return integer job_id
+function M.download_async(path, output, callbacks, opts)
+  callbacks = callbacks or {}
+  opts = opts or {}
+
+  local url = build_url(path)
+  local cmd = {
+    'curl',
+    '-sL',
+    '-H', 'Accept: application/vnd.github+json',
+    '-H', 'Authorization: token ' .. (token or ''),
+    '-H', 'X-GitHub-Api-Version: 2022-11-28',
+    '-o', output,
+    '-w', '%{http_code}',
+    url,
+  }
+
+  local stdout_lines = {}
+  local stderr_lines = {}
+
+  local jobid = job.start(cmd, {
+    timeout = opts.timeout or 30000,
+    on_stdout = function(id, data)
+      for _, line in ipairs(data) do
+        if line ~= '' then
+          stdout_lines[#stdout_lines + 1] = line
+        end
+      end
+    end,
+    on_stderr = function(id, data)
+      for _, line in ipairs(data) do
+        if line ~= '' then
+          stderr_lines[#stderr_lines + 1] = line
+        end
+      end
+    end,
+    on_exit = function(id, code, signal)
+      M._pending[id] = nil
+
+      if code == 0 and signal == 0 then
+        local http_code = 200
+        if #stdout_lines > 0 then
+          http_code = tonumber(stdout_lines[#stdout_lines]) or 200
+        end
+
+        if http_code >= 200 and http_code < 300 then
+          if callbacks.on_success then
+            callbacks.on_success(id, output, http_code)
+          end
+        else
+          local err_msg = table.concat(stderr_lines, '\n')
+          if callbacks.on_error then
+            callbacks.on_error(id, err_msg, http_code)
+          end
+        end
+      else
+        local err_msg = table.concat(stderr_lines, '\n')
+        if err_msg == '' then
+          if signal == 15 then
+            err_msg = 'request timeout (killed by SIGTERM)'
+          else
+            err_msg = string.format('curl exited with code %d, signal %d', code, signal)
+          end
+        end
+        if callbacks.on_error then
+          callbacks.on_error(id, err_msg)
+        end
+      end
+
+      if callbacks.on_exit then
+        callbacks.on_exit(id, code, signal)
+      end
+    end,
+  })
+
+  if jobid > 0 then
+    M._pending[jobid] = {
+      path = path,
+      start_time = vim.loop.hrtime(),
+    }
+  end
+
+  return jobid
+end
+
 return M
 

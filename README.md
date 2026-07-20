@@ -246,6 +246,7 @@ M.get_workflow_run(user, repo, run_id)
 M.re_run_workflow(user, repo, run_id)
 M.cancel_workflow_run(user, repo, run_id)
 M.list_jobs_for_run(user, repo, run_id)
+M.download_job_logs(user, repo, job_id, output)
 M.list_artifacts(user, repo)
 M.get_artifact(user, repo, artifact_id)
 M.delete_artifact(user, repo, artifact_id)
@@ -328,6 +329,7 @@ Supported operations:
 | `list_workflow_runs`   | List workflow runs with filters    |
 | `get_workflow_run`     | Get a specific workflow run        |
 | `list_jobs_for_run`    | List jobs for a workflow run       |
+| `download_job_logs`    | Download logs for a job (zip)      |
 | `list_artifacts`       | List artifacts for a repository    |
 | `get_artifact`         | Get a specific artifact            |
 | `re_run_workflow`      | Re-run a workflow                  |
