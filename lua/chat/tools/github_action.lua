@@ -78,7 +78,7 @@ end
 
 --- Format API response data into readable text lines
 ---@param op string operation name
----@param data table parsed JSON response
+---@param data table parsed JSON response or parsed steps
 ---@param user string repo owner
 ---@param repo string repo name
 ---@param action table original action parameters
@@ -121,6 +121,16 @@ local function format_result(op, data, user, repo, action)
     for i, job in ipairs(jobs) do
       table.insert(lines, string.format('%d. %s', i, job.name or 'N/A'))
       table.insert(lines, format_job(job))
+      table.insert(lines, '')
+    end
+
+  elseif op == 'get_job_logs' then
+    -- data is an array of {number, name, content}
+    table.insert(lines, string.format('Job logs for %s/%s job %d (%d steps):', user, repo, action.job_id, #data))
+    table.insert(lines, '')
+    for _, step in ipairs(data) do
+      table.insert(lines, string.format('--- Step %d: %s ---', step.number, step.name))
+      table.insert(lines, step.content or '')
       table.insert(lines, '')
     end
 
@@ -184,6 +194,8 @@ function M.github_action(action, ctx)
     return { error = 'run_id is required for ' .. op .. ' operation.' }
   elseif (op == 'get_artifact' or op == 'delete_artifact') and not action.artifact_id then
     return { error = 'artifact_id is required for ' .. op .. ' operation.' }
+  elseif op == 'get_job_logs' and not action.job_id then
+    return { error = 'job_id is required for get_job_logs operation.' }
   end
 
   -- Valid operations
@@ -193,6 +205,7 @@ function M.github_action(action, ctx)
     list_workflow_runs = true,
     get_workflow_run = true,
     list_jobs_for_run = true,
+    get_job_logs = true,
     list_artifacts = true,
     get_artifact = true,
     re_run_workflow = true,
@@ -203,8 +216,8 @@ function M.github_action(action, ctx)
     return {
       error = string.format(
         'Unknown operation: "%s". Valid operations: list_workflows, get_workflow, '
-          .. 'list_workflow_runs, get_workflow_run, list_jobs_for_run, list_artifacts, '
-          .. 'get_artifact, re_run_workflow, cancel_workflow_run, delete_artifact',
+          .. 'list_workflow_runs, get_workflow_run, list_jobs_for_run, get_job_logs, '
+          .. 'list_artifacts, get_artifact, re_run_workflow, cancel_workflow_run, delete_artifact',
         op
       ),
     }
@@ -257,6 +270,9 @@ function M.github_action(action, ctx)
   elseif op == 'list_jobs_for_run' then
     jobid = ops.list_jobs_for_run_async(user, repo, action.run_id, callbacks)
 
+  elseif op == 'get_job_logs' then
+    jobid = ops.get_job_logs_async(user, repo, action.job_id, callbacks)
+
   elseif op == 'list_artifacts' then
     jobid = ops.list_artifacts_async(user, repo, callbacks)
 
@@ -294,6 +310,7 @@ function M.scheme()
         - list_workflow_runs: List workflow runs (optional filters: actor, branch, event, status)
         - get_workflow_run: Get a specific workflow run (requires run_id)
         - list_jobs_for_run: List jobs for a workflow run (requires run_id)
+        - get_job_logs: Get parsed job logs as step-by-step text (requires job_id)
         - list_artifacts: List artifacts for a repository
         - get_artifact: Get a specific artifact (requires artifact_id)
 
@@ -319,16 +336,19 @@ function M.scheme()
         5. List jobs for a run:
            @github_action user="wsdjeg" repo="github.nvim" operation="list_jobs_for_run" run_id=12345678
 
-        6. List artifacts:
+        6. Get parsed job logs:
+           @github_action user="wsdjeg" repo="github.nvim" operation="get_job_logs" job_id=12345678
+
+        7. List artifacts:
            @github_action user="wsdjeg" repo="github.nvim" operation="list_artifacts"
 
-        7. Re-run a workflow:
+        8. Re-run a workflow:
            @github_action user="wsdjeg" repo="github.nvim" operation="re_run_workflow" run_id=12345678
 
-        8. Cancel a workflow run:
+        9. Cancel a workflow run:
            @github_action user="wsdjeg" repo="github.nvim" operation="cancel_workflow_run" run_id=12345678
 
-        9. Delete an artifact:
+        10. Delete an artifact:
            @github_action user="wsdjeg" repo="github.nvim" operation="delete_artifact" artifact_id=98765432
       ]],
       parameters = {
@@ -351,6 +371,7 @@ function M.scheme()
               'list_workflow_runs',
               'get_workflow_run',
               'list_jobs_for_run',
+              'get_job_logs',
               'list_artifacts',
               'get_artifact',
               're_run_workflow',
@@ -365,6 +386,10 @@ function M.scheme()
           run_id = {
             type = 'integer',
             description = 'Workflow run ID, required for get_workflow_run, list_jobs_for_run, re_run_workflow, cancel_workflow_run',
+          },
+          job_id = {
+            type = 'integer',
+            description = 'Job ID, required for get_job_logs',
           },
           artifact_id = {
             type = 'integer',
@@ -412,6 +437,9 @@ function M.info(action, _)
     end
     if action.run_id then
       table.insert(parts, string.format('run=%d', action.run_id))
+    end
+    if action.job_id then
+      table.insert(parts, string.format('job=%d', action.job_id))
     end
     if action.artifact_id then
       table.insert(parts, string.format('artifact=%d', action.artifact_id))

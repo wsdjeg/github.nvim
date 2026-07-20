@@ -22,6 +22,7 @@ function M.mock_util()
     delete_async = util.delete_async,
     download = util.download,
     download_async = util.download_async,
+    unzip = util.unzip,
   }
 
   -- Mock sync request
@@ -34,6 +35,11 @@ function M.mock_util()
   util.download = function(path, output)
     table.insert(captured.sync, { path = path, output = output })
     return true, 200
+  end
+
+  -- Mock unzip (default: no-op, tests can override)
+  util.unzip = function(zip_path, dest_dir)
+    return true
   end
 
   -- Mock async methods
@@ -82,6 +88,7 @@ function M.mock_util()
     util.delete_async = orig.delete_async
     util.download = orig.download
     util.download_async = orig.download_async
+    util.unzip = orig.unzip
   end
 
   return captured, restore

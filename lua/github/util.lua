@@ -387,5 +387,19 @@ function M.download_async(path, output, callbacks, opts)
   return jobid
 end
 
+-- ============================================================
+-- 解压 (unzip)
+-- ============================================================
+
+--- 解压 zip 文件到指定目录
+---@param zip_path string zip 文件路径
+---@param dest_dir string 目标目录
+---@return boolean success
+function M.unzip(zip_path, dest_dir)
+  local cmd = { 'unzip', '-o', zip_path, '-d', dest_dir }
+  vim.fn.system(cmd)
+  return vim.v.shell_error == 0
+end
+
 return M
 
