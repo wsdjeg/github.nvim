@@ -124,8 +124,27 @@ local function format_result(op, data, user, repo, action)
   elseif op == 'get_tree' then
     local sha = action.sha or '?'
     local truncated = data.truncated and ' (truncated)' or ''
-    local entries = data.tree or {}
-    table.insert(lines, string.format('Git tree for %s/%s @ %s (%d entries%s):', user, repo, sha, #entries, truncated))
+    local all_entries = data.tree or {}
+    local filter_path = action.path
+
+    -- If path filter is set, keep only entries under that directory
+    local entries = {}
+    if filter_path and filter_path ~= '' then
+      -- Normalize: ensure no leading/trailing slashes
+      filter_path = filter_path:gsub('^/', ''):gsub('/$', '')
+      local prefix = filter_path .. '/'
+      for _, item in ipairs(all_entries) do
+        local p = item.path or ''
+        if p == filter_path or p:sub(1, #prefix) == prefix then
+          table.insert(entries, item)
+        end
+      end
+    else
+      entries = all_entries
+    end
+
+    local header_path = filter_path and filter_path ~= '' and ('/' .. filter_path) or ''
+    table.insert(lines, string.format('Git tree for %s/%s%s @ %s (%d entries%s):', user, repo, header_path, sha, #entries, truncated))
     table.insert(lines, '')
     for i, item in ipairs(entries) do
       local item_type = item.type or 'unknown'
@@ -220,7 +239,11 @@ function M.github_repo(action, ctx)
     jobid = repo_api.get_contents_async(user, repo, action.path, action.ref, callbacks)
 
   elseif op == 'get_tree' then
+    -- If path filter is set, force recursive to get all entries for client-side filtering
     local recursive = action.recursive == true or action.recursive == 'true'
+    if action.path and action.path ~= '' then
+      recursive = true
+    end
     jobid = repo_api.get_tree_async(user, repo, action.sha, recursive, callbacks)
   end
 
@@ -242,7 +265,7 @@ function M.scheme()
         - get_repo: Get repository information (stars, forks, description, language, etc.)
         - get_readme: Get the README content of a repository (decoded from base64)
         - get_contents: Get file or directory contents (requires path; decoded from base64 for files)
-        - get_tree: Get the Git tree for a branch/tag/commit (requires sha; use recursive=true for full tree)
+        - get_tree: Get the Git tree for a branch/tag/commit (requires sha; use recursive=true for full tree; optional path to filter by directory)
 
         EXAMPLES:
 
@@ -266,6 +289,9 @@ function M.scheme()
 
         7. Get tree for a specific commit:
            @github_repo user="wsdjeg" repo="github.nvim" operation="get_tree" sha="abc1234"
+
+        8. Get tree filtered by directory path:
+           @github_repo user="wsdjeg" repo="github.nvim" operation="get_tree" sha="master" path="lua/github"
       ]],
       parameters = {
         type = 'object',
@@ -290,7 +316,7 @@ function M.scheme()
           },
           path = {
             type = 'string',
-            description = 'File or directory path (e.g. "lua/github/init.lua"), required for get_contents',
+            description = 'File or directory path. Required for get_contents. Optional for get_tree to filter by directory (forces recursive)',
           },
           ref = {
             type = 'string',
@@ -302,7 +328,7 @@ function M.scheme()
           },
           recursive = {
             type = 'boolean',
-            description = 'If true, fetch the entire tree recursively (for get_tree). Default: false',
+            description = 'If true, fetch the entire tree recursively (for get_tree). Default: false. Auto-enabled when path is set',
           },
         },
         required = { 'user', 'repo', 'operation' },
