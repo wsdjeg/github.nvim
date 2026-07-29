@@ -120,6 +120,20 @@ local function format_result(op, data, user, repo, action)
         table.insert(lines, data.content or '(empty)')
       end
     end
+
+  elseif op == 'get_tree' then
+    local sha = action.sha or '?'
+    local truncated = data.truncated and ' (truncated)' or ''
+    local entries = data.tree or {}
+    table.insert(lines, string.format('Git tree for %s/%s @ %s (%d entries%s):', user, repo, sha, #entries, truncated))
+    table.insert(lines, '')
+    for i, item in ipairs(entries) do
+      local item_type = item.type or 'unknown'
+      local marker = item_type == 'tree' and '/' or ''
+      local mode = item.mode or ''
+      local size_str = item_type == 'blob' and string.format(' (%d bytes)', item.size or 0) or ''
+      table.insert(lines, string.format('%d. %s%s%s%s', i, item.path or 'N/A', marker, size_str, mode ~= '' and string.format(' [%s]', mode) or ''))
+    end
   end
 
   return lines
@@ -152,11 +166,12 @@ function M.github_repo(action, ctx)
     get_repo = true,
     get_readme = true,
     get_contents = true,
+    get_tree = true,
   }
   if not valid_ops[op] then
     return {
       error = string.format(
-        'Unknown operation: "%s". Valid operations: get_repo, get_readme, get_contents',
+        'Unknown operation: "%s". Valid operations: get_repo, get_readme, get_contents, get_tree',
         op
       ),
     }
@@ -165,6 +180,9 @@ function M.github_repo(action, ctx)
   -- Operation-specific parameter validation
   if op == 'get_contents' and (not action.path or action.path == '') then
     return { error = 'path is required for get_contents operation.' }
+  end
+  if op == 'get_tree' and (not action.sha or action.sha == '') then
+    return { error = 'sha is required for get_tree operation.' }
   end
 
   -- Build async callbacks
@@ -200,6 +218,10 @@ function M.github_repo(action, ctx)
 
   elseif op == 'get_contents' then
     jobid = repo_api.get_contents_async(user, repo, action.path, action.ref, callbacks)
+
+  elseif op == 'get_tree' then
+    local recursive = action.recursive == true or action.recursive == 'true'
+    jobid = repo_api.get_tree_async(user, repo, action.sha, recursive, callbacks)
   end
 
   return { jobid = jobid }
@@ -220,6 +242,7 @@ function M.scheme()
         - get_repo: Get repository information (stars, forks, description, language, etc.)
         - get_readme: Get the README content of a repository (decoded from base64)
         - get_contents: Get file or directory contents (requires path; decoded from base64 for files)
+        - get_tree: Get the Git tree for a branch/tag/commit (requires sha; use recursive=true for full tree)
 
         EXAMPLES:
 
@@ -237,6 +260,12 @@ function M.scheme()
 
         5. Get file from specific branch:
            @github_repo user="wsdjeg" repo="github.nvim" operation="get_contents" path="README.md" ref="develop"
+
+        6. Get full recursive tree:
+           @github_repo user="wsdjeg" repo="github.nvim" operation="get_tree" sha="master" recursive=true
+
+        7. Get tree for a specific commit:
+           @github_repo user="wsdjeg" repo="github.nvim" operation="get_tree" sha="abc1234"
       ]],
       parameters = {
         type = 'object',
@@ -256,6 +285,7 @@ function M.scheme()
               'get_repo',
               'get_readme',
               'get_contents',
+              'get_tree',
             },
           },
           path = {
@@ -265,6 +295,14 @@ function M.scheme()
           ref = {
             type = 'string',
             description = 'Git ref (branch, tag, or commit) for get_readme and get_contents (optional)',
+          },
+          sha = {
+            type = 'string',
+            description = 'Tree SHA, branch name, tag, or commit SHA for get_tree (e.g. "master", "v1.0.0", "abc1234")',
+          },
+          recursive = {
+            type = 'boolean',
+            description = 'If true, fetch the entire tree recursively (for get_tree). Default: false',
           },
         },
         required = { 'user', 'repo', 'operation' },
@@ -292,6 +330,12 @@ function M.info(action, _)
     end
     if action.ref then
       table.insert(parts, string.format('ref=%s', action.ref))
+    end
+    if action.sha then
+      table.insert(parts, string.format('sha=%s', action.sha))
+    end
+    if action.recursive then
+      table.insert(parts, 'recursive=true')
     end
     return table.concat(parts, ' ')
   end
