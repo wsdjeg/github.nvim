@@ -1,8 +1,8 @@
 --[[
   Repository 模块
 
-  同步 API: M.update
-  异步 API: M.update_async
+  同步 API: M.update, M.get, M.get_readme, M.get_contents
+  异步 API: M.update_async, M.get_async, M.get_readme_async, M.get_contents_async
 --]]
 local M = {}
 
@@ -20,7 +20,7 @@ local util = require('github.util')
 ---@field is_template boolean Either `true` to make this repo available as a template repository or `false` to prevent it. Default: `false`.
 ---@field default_branch string Updates the default branch for this repository.
 ---@field allow_squash_merge boolean Either `true` to allow squash-merging pull requests, or `false` to prevent squash-merging. Default: `true`.
----@field allow_merge_commit boolean Either `true` to allow merging pull requests with a merge commit, or `false` to prevent merging pull requests with merge commits.
+---@field allow_merge_commit boolean Either `true` to allow merging pull requests with a merge commit, or `false` to prevent merging with merge commits.
 ---@field allow_rebase_merge boolean Either `true` to allow rebase-merging pull requests, or `false` to prevent rebase-merging. Default: `true`.
 ---@field allow_auto_merge boolean Either `true` to allow auto-merge on pull requests, or `false` to disallow auto-merge. Default: `false`.
 ---@field delete_branch_on_merge boolean  Either `true` to allow automatically deleting head branches when pull requests are merged, or `false` to prevent automatic deletion. Default: `false`.
@@ -58,6 +58,44 @@ function M.update(user, repo, repository)
   })
 end
 
+--- 获取仓库信息
+---@param user string
+---@param repo string
+---@return table
+function M.get(user, repo)
+  return util.request(build_path(user, repo))
+end
+
+--- 获取仓库 README
+---@param user string
+---@param repo string
+---@param ref? string Optional git ref (branch/tag/commit)
+---@return table
+function M.get_readme(user, repo, ref)
+  local path = build_path(user, repo) .. '/readme'
+  local args = nil
+  if ref then
+    args = { '-H', 'Accept: application/vnd.github.raw' }
+    -- Use query param for ref
+    path = path .. '?ref=' .. ref
+  end
+  return util.request(path, args)
+end
+
+--- 获取仓库文件/目录内容
+---@param user string
+---@param repo string
+---@param path string 文件或目录路径 (如 "lua/github/init.lua" 或 "lua/github")
+---@param ref? string Optional git ref (branch/tag/commit)
+---@return table
+function M.get_contents(user, repo, path, ref)
+  local api_path = build_path(user, repo) .. '/contents/' .. path
+  if ref then
+    api_path = api_path .. '?ref=' .. ref
+  end
+  return util.request(api_path)
+end
+
 -- ============================================================
 -- 异步 API
 -- ============================================================
@@ -71,6 +109,47 @@ end
 ---@return integer job_id
 function M.update_async(user, repo, repository, callbacks, opts)
   return util.patch_async(build_path(user, repo), vim.json.encode(repository), callbacks, opts)
+end
+
+--- 异步获取仓库信息
+---@param user string
+---@param repo string
+---@param callbacks table {on_success, on_error, on_exit}
+---@param opts table? {timeout?}
+---@return integer job_id
+function M.get_async(user, repo, callbacks, opts)
+  return util.get_async(build_path(user, repo), callbacks, opts)
+end
+
+--- 异步获取仓库 README
+---@param user string
+---@param repo string
+---@param ref? string Optional git ref (branch/tag/commit)
+---@param callbacks table {on_success, on_error, on_exit}
+---@param opts table? {timeout?}
+---@return integer job_id
+function M.get_readme_async(user, repo, ref, callbacks, opts)
+  local path = build_path(user, repo) .. '/readme'
+  if ref then
+    path = path .. '?ref=' .. ref
+  end
+  return util.get_async(path, callbacks, opts)
+end
+
+--- 异步获取仓库文件/目录内容
+---@param user string
+---@param repo string
+---@param path string 文件或目录路径
+---@param ref? string Optional git ref (branch/tag/commit)
+---@param callbacks table {on_success, on_error, on_exit}
+---@param opts table? {timeout?}
+---@return integer job_id
+function M.get_contents_async(user, repo, path, ref, callbacks, opts)
+  local api_path = build_path(user, repo) .. '/contents/' .. path
+  if ref then
+    api_path = api_path .. '?ref=' .. ref
+  end
+  return util.get_async(api_path, callbacks, opts)
 end
 
 return M
