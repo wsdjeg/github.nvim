@@ -77,6 +77,31 @@ function TestRepository:testGetContentsWithRef()
   lu.assertEquals(captured.sync[1].path, 'repos/wsdjeg/github.nvim/contents/lua/github?ref=develop')
 end
 
+function TestRepository:testGetTree()
+  local captured, restore = helpers.mock_util()
+  repository.get_tree('wsdjeg', 'github.nvim', 'master')
+  restore()
+
+  lu.assertEquals(captured.sync[1].path, 'repos/wsdjeg/github.nvim/git/trees/master')
+  lu.assertIsNil(captured.sync[1].args)
+end
+
+function TestRepository:testGetTreeRecursive()
+  local captured, restore = helpers.mock_util()
+  repository.get_tree('wsdjeg', 'github.nvim', 'master', true)
+  restore()
+
+  lu.assertEquals(captured.sync[1].path, 'repos/wsdjeg/github.nvim/git/trees/master?recursive=1')
+end
+
+function TestRepository:testGetTreeWithCommitSha()
+  local captured, restore = helpers.mock_util()
+  repository.get_tree('wsdjeg', 'github.nvim', 'abc123def456')
+  restore()
+
+  lu.assertEquals(captured.sync[1].path, 'repos/wsdjeg/github.nvim/git/trees/abc123def456')
+end
+
 -- ============================================================
 -- Async API
 -- ============================================================
@@ -131,6 +156,24 @@ function TestRepository:testGetContentsAsyncWithRef()
   restore()
 
   lu.assertEquals(captured.async[1].path, 'repos/wsdjeg/github.nvim/contents/lua/github?ref=develop')
+end
+
+function TestRepository:testGetTreeAsync()
+  local captured, restore = helpers.mock_util()
+  repository.get_tree_async('wsdjeg', 'github.nvim', 'master', nil, {})
+  restore()
+
+  lu.assertEquals(captured.async[1].method, 'GET')
+  lu.assertEquals(captured.async[1].path, 'repos/wsdjeg/github.nvim/git/trees/master')
+end
+
+function TestRepository:testGetTreeAsyncRecursive()
+  local captured, restore = helpers.mock_util()
+  repository.get_tree_async('wsdjeg', 'github.nvim', 'master', true, {})
+  restore()
+
+  lu.assertEquals(captured.async[1].method, 'GET')
+  lu.assertEquals(captured.async[1].path, 'repos/wsdjeg/github.nvim/git/trees/master?recursive=1')
 end
 
 return TestRepository

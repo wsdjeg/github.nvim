@@ -1,8 +1,8 @@
 --[[
   Repository 模块
 
-  同步 API: M.update, M.get, M.get_readme, M.get_contents
-  异步 API: M.update_async, M.get_async, M.get_readme_async, M.get_contents_async
+  同步 API: M.update, M.get, M.get_readme, M.get_contents, M.get_tree
+  异步 API: M.update_async, M.get_async, M.get_readme_async, M.get_contents_async, M.get_tree_async
 --]]
 local M = {}
 
@@ -21,7 +21,7 @@ local util = require('github.util')
 ---@field default_branch string Updates the default branch for this repository.
 ---@field allow_squash_merge boolean Either `true` to allow squash-merging pull requests, or `false` to prevent squash-merging. Default: `true`.
 ---@field allow_merge_commit boolean Either `true` to allow merging pull requests with a merge commit, or `false` to prevent merging with merge commits.
----@field allow_rebase_merge boolean Either `true` to allow rebase-merging pull requests, or `false` to prevent rebase-merging. Default: `true`.
+---@field allow_rebase_merge boolean Either `true` to allow rebase-merging pull requests, or `false` to prevent. Default: `true`.
 ---@field allow_auto_merge boolean Either `true` to allow auto-merge on pull requests, or `false` to disallow auto-merge. Default: `false`.
 ---@field delete_branch_on_merge boolean  Either `true` to allow automatically deleting head branches when pull requests are merged, or `false` to prevent automatic deletion. Default: `false`.
 ---@field allow_update_branch boolean Either `true` to always allow a pull request head branch that is behind its base branch to be updated even if it is not required to be up to date before merging, or `false` otherwise. Default: `false`.
@@ -96,6 +96,21 @@ function M.get_contents(user, repo, path, ref)
   return util.request(api_path)
 end
 
+--- 获取仓库文件树 (Git Trees API)
+--- 比 get_contents 列目录更高效：不返回文件内容，只返回路径和类型
+---@param user string 仓库所有者
+---@param repo string 仓库名称
+---@param sha string tree SHA，也可传分支名 (如 "master")、tag 或 commit SHA
+---@param recursive? boolean 是否递归获取整棵树 (默认 false)
+---@return table
+function M.get_tree(user, repo, sha, recursive)
+  local api_path = build_path(user, repo) .. '/git/trees/' .. sha
+  if recursive then
+    api_path = api_path .. '?recursive=1'
+  end
+  return util.request(api_path)
+end
+
 -- ============================================================
 -- 异步 API
 -- ============================================================
@@ -148,6 +163,22 @@ function M.get_contents_async(user, repo, path, ref, callbacks, opts)
   local api_path = build_path(user, repo) .. '/contents/' .. path
   if ref then
     api_path = api_path .. '?ref=' .. ref
+  end
+  return util.get_async(api_path, callbacks, opts)
+end
+
+--- 异步获取仓库文件树 (Git Trees API)
+---@param user string 仓库所有者
+---@param repo string 仓库名称
+---@param sha string tree SHA，也可传分支名 (如 "master")、tag 或 commit SHA
+---@param recursive? boolean 是否递归获取整棵树 (默认 false)
+---@param callbacks table {on_success, on_error, on_exit}
+---@param opts table? {timeout?}
+---@return integer job_id
+function M.get_tree_async(user, repo, sha, recursive, callbacks, opts)
+  local api_path = build_path(user, repo) .. '/git/trees/' .. sha
+  if recursive then
+    api_path = api_path .. '?recursive=1'
   end
   return util.get_async(api_path, callbacks, opts)
 end
